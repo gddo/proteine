@@ -29,7 +29,6 @@ function load() {
 }
 let state = load();
 let tab = 'home', toastTimer = null, picker = null, chooser = null;
-let calMonth = new Date(now().getFullYear(), now().getMonth(), 1, 12);
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); }
   catch (e) { showToast('Salvataggio non riuscito: la memoria del browser è bloccata.'); }
@@ -43,10 +42,9 @@ function slotName(date, meal, today) {
   if (date === today) return `${m} di oggi`;
   if (date === tom) return `${m} di domani`;
   if (date === yest) return `${m} di ieri`;
-  return `${m} di ${fmtDay(date)}`;
+  return `${m} di ${fmtDay(date)} ${fromKey(date).getDate()}`;
 }
 const cap = s => s[0].toUpperCase() + s.slice(1);
-const MONTHS = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
 const MON3 = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
 
 function pips(r, future) {
@@ -78,22 +76,18 @@ function renderHome() {
 }
 
 function renderCalendar(today) {
-  const first = calMonth, y = first.getFullYear(), mo = first.getMonth();
-  const days = new Date(y, mo + 1, 0).getDate();
-  const meal = currentMeal(now(), state.plan);
+  const start = addDays(mondayOf(now()), -7), meal = currentMeal(now(), state.plan);
   let cells = ['L', 'M', 'M', 'G', 'V', 'S', 'D'].map(d => `<span class="h">${d}</span>`).join('');
-  cells += '<span></span>'.repeat(dayIndex(first));
-  for (let n = 1; n <= days; n++) {
-    const k = dateKey(new Date(y, mo, n, 12));
+  for (let i = 0; i < 14; i++) {
+    const day = addDays(start, i), k = dateKey(day);
     const slot = m => {
       const id = state.logs[slotId(k, m)], src = id && BY_ID[id];
       const fut = k > today || (k === today && m === 'C' && meal === 'P');
-      return `<button type="button" id="s-${k}-${m}" class="slot ${fut ? 'fut' : ''} ${src ? `full g-${src.group}` : 'empty'}" data-slot="${k}|${m}" aria-label="${cap(MEALS[m].toLowerCase())} del ${n}: ${src ? src.name : 'vuoto'}">${src ? icon(id) : ''}</button>`;
+      return `<button type="button" id="s-${k}-${m}" class="slot ${fut ? 'fut' : ''} ${src ? `full g-${src.group}` : 'empty'}" data-slot="${k}|${m}" aria-label="${MEALS[m]} del ${day.getDate()}: ${src ? src.name : 'vuoto'}">${src ? icon(id) : ''}</button>`;
     };
-    cells += `<div class="cal-d ${k === today ? 't' : ''}"><span class="n">${n}</span>${slot('P')}${slot('C')}</div>`;
+    cells += `<div class="cal-d ${k === today ? 't' : ''}"><span class="n">${day.getDate()}</span>${slot('P')}${slot('C')}</div>`;
   }
-  return `<div class="wk-nav"><button id="cal-prev" type="button" aria-label="Mese precedente">‹</button><b>${cap(MONTHS[mo])} ${y}</b><button id="cal-next" type="button" aria-label="Mese successivo">›</button></div>
-    <div class="cal">${cells}</div><p class="sub">Sopra il pranzo, sotto la cena. Tocca una casella per aggiungere o cambiare il pasto.</p>`;
+  return `<div class="cal">${cells}</div>`;
 }
 
 function renderPlan() {
@@ -117,11 +111,10 @@ function renderPlan() {
       <div class="step"><button type="button" id="m-${s.id}" data-adj="${s.id}" data-d="-1" aria-label="Togli una porzione di ${s.name}">−</button><b>${t}</b><button type="button" id="p-${s.id}" data-adj="${s.id}" data-d="1" aria-label="Aggiungi una porzione di ${s.name}">+</button></div></div>`;
   }).join('');
   const dark = isDark();
-  return `<section class="card"><h2>Questa settimana</h2>
-    <div><div class="kpi">${cur.pct}%</div><p class="sub">del piano mangiato finora (${cur.hit} porzioni su ${cur.tot}). Pasti segnati: ${cur.meals} su 14.</p></div>
+  return `<section class="card"><h2>Calendario</h2>${renderCalendar(today)}</section>
+  <section class="card"><h2>Questa settimana</h2>
     ${weekRows}
   </section>
-  <section class="card"><h2>Calendario</h2>${renderCalendar(today)}</section>
   <section class="card"><h2>Porzioni a settimana</h2>
     <p class="sub">Totale ${total} su 14 pasti.</p>
     ${steps}
@@ -252,8 +245,6 @@ document.addEventListener('click', e => {
     case 'close': return closePicker();
     case 'wk-prev': picker.monday = addDays(picker.monday, -7); return renderPicker();
     case 'wk-next': picker.monday = addDays(picker.monday, 7); return renderPicker();
-    case 'cal-prev': calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1, 12); return render();
-    case 'cal-next': calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1, 12); return render();
     case 'clear-slot': return mark(state.logs[slotId(chooser.date, chooser.meal)], chooser.date, chooser.meal);
     case 'import': return $('#json-input').click();
     case 'export': return exportData();
@@ -263,5 +254,13 @@ $('#json-input').addEventListener('change', e => { const f = e.target.files[0]; 
 document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
 setInterval(() => { if (!document.hidden && !picker && !chooser) render(); }, 60000);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+/* Su iOS l'app installata può finire sopra il fondo dello schermo: lì il margine per la barra Home è di troppo. */
+function fitBottom() {
+  const installed = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+  const short = installed && innerHeight > innerWidth && screen.height - innerHeight > 20;
+  document.documentElement.style.setProperty('--safe-bottom', short ? '0px' : 'env(safe-area-inset-bottom, 0px)');
+}
+addEventListener('resize', fitBottom);
+fitBottom();
 applyTheme();
 render();
