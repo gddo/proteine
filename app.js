@@ -253,14 +253,48 @@ document.addEventListener('click', e => {
 $('#json-input').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importData(f); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
 setInterval(() => { if (!document.hidden && !picker && !chooser) render(); }, 60000);
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-/* Su iOS l'app installata può finire sopra il fondo dello schermo: lì il margine per la barra Home è di troppo. */
+/* Aggiornamenti: la versione nuova resta in attesa finché non tocchi Aggiorna. */
+function showUpdate(worker) {
+  const u = $('#update');
+  u.hidden = false;
+  u.querySelector('button').onclick = () => worker.postMessage('skipWaiting');
+}
+if ('serviceWorker' in navigator) {
+  let hadController = !!navigator.serviceWorker.controller, reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !reloading) { reloading = true; location.reload(); }
+    hadController = true;
+  });
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    if (reg.waiting && navigator.serviceWorker.controller) showUpdate(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing;
+      w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) showUpdate(w); });
+    });
+    const check = () => { if (!document.hidden) reg.update().catch(() => {}); };
+    check();
+    document.addEventListener('visibilitychange', check);
+  }).catch(() => {});
+}
+
+/* Su iOS l'app installata può ancorare gli elementi fissi circa 60 punti sopra il fondo dello schermo:
+   misuro dov'è il fondo reale per gli elementi fissi e riporto giù barra e pannello. */
 function fitBottom() {
+  const root = document.documentElement;
   const installed = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
-  const short = installed && innerHeight > innerWidth && screen.height - innerHeight > 20;
-  document.documentElement.style.setProperty('--safe-bottom', short ? '0px' : 'env(safe-area-inset-bottom, 0px)');
+  let lift = 0;
+  if (installed && innerHeight > innerWidth) {
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;left:0;bottom:0;width:0;height:0;visibility:hidden';
+    document.body.append(probe);
+    lift = Math.round(screen.height - probe.getBoundingClientRect().bottom);
+    probe.remove();
+    if (lift < 20 || lift > 120) lift = 0;
+  }
+  root.style.setProperty('--lift', `${lift}px`);
 }
 addEventListener('resize', fitBottom);
+addEventListener('pageshow', fitBottom);
 fitBottom();
 applyTheme();
 render();
