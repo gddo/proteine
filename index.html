@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Proteine</title>
+<meta name="description" content="Quali fonti proteiche del piano mangiare e quali hai già mangiato questa settimana.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Proteine">
+<meta name="theme-color" content="#f4f6f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101619" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main id="view"></main>
+<nav class="tabs" aria-label="Schermate">
+  <button id="tab-home" type="button" data-tab="home">Mangia</button>
+  <button id="tab-plan" type="button" data-tab="plan">Piano e statistiche</button>
+</nav>
+<div id="sheet" class="sheet" hidden></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<input id="pdf-input" type="file" accept="application/pdf,.pdf" hidden>
+<input id="json-input" type="file" accept="application/json,.json" hidden>
+<script src="logic.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
