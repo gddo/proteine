@@ -1,5 +1,5 @@
 const KEY = 'proteine.v1';
-const VERSION = 'r26.1.0'; // tenere allineato con sw.js
+const VERSION = 'r26.1.1'; // tenere allineato con sw.js
 const { SOURCES, BY_ID, DAYS, MEALS, DEFAULT_PLAN, DEFAULT_ADJ, dateKey, fromKey, addDays, dayIndex, mondayOf, currentMeal, nextSlot, slotId, targetOf, weekKeys, weekCounts, lastEaten, rank, weekStats, averages } = L;
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -127,14 +127,7 @@ function renderPlan() {
     <p class="sub">I dati stanno solo su questo telefono. Scaricali ogni tanto: servono anche per ripristinarli se cambi telefono.</p>
     <div class="btns"><button class="btn alt" id="export" type="button">Scarica i dati</button><button class="btn alt" id="import" type="button">Ripristina</button></div>
   </section>
-  <p class="ver">${VERSION}</p><p class="ver" id="diag">${diag()}</p>`;
-}
-
-/* Misure temporanee per capire dove iOS mette il fondo dello schermo. */
-function diag() {
-  const m = css => { const d = document.createElement('div'); d.style.cssText = `position:fixed;left:0;visibility:hidden;width:0;${css}`; document.body.append(d); const r = d.getBoundingClientRect(); d.remove(); return r; };
-  const v = window.visualViewport;
-  return `sb ${screen.height} ih ${innerHeight} ch ${document.documentElement.clientHeight} vv ${v ? Math.round(v.height) : '-'}/${v ? Math.round(v.offsetTop) : '-'} fb ${Math.round(m('bottom:0;height:0').bottom)} vh ${Math.round(m('top:0;height:100vh').height)} lvh ${Math.round(m('top:0;height:100lvh').height)} st ${Math.round(m('top:0;height:env(safe-area-inset-top,0px)').height)} sf ${Math.round(m('top:0;height:env(safe-area-inset-bottom,0px)').height)} lift ${getComputedStyle(document.documentElement).getPropertyValue('--lift').trim()} sa ${navigator.standalone ? 1 : 0}`;
+  <p class="ver">${VERSION}</p>`;
 }
 
 function isDark() {
@@ -286,24 +279,5 @@ if ('serviceWorker' in navigator) {
   }).catch(() => {});
 }
 
-/* Su iOS l'app installata può ancorare gli elementi fissi circa 60 punti sopra il fondo dello schermo:
-   misuro dov'è il fondo reale per gli elementi fissi e riporto giù barra e pannello. */
-function fitBottom() {
-  const root = document.documentElement;
-  const installed = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
-  let lift = 0;
-  if (installed && innerHeight > innerWidth) {
-    const probe = document.createElement('div');
-    probe.style.cssText = 'position:fixed;left:0;bottom:0;width:0;height:0;visibility:hidden';
-    document.body.append(probe);
-    lift = Math.round(screen.height - probe.getBoundingClientRect().bottom);
-    probe.remove();
-    if (lift < 20 || lift > 120) lift = 0;
-  }
-  root.style.setProperty('--lift', `${lift}px`);
-}
-addEventListener('resize', fitBottom);
-addEventListener('pageshow', fitBottom);
-fitBottom();
 applyTheme();
 render();
