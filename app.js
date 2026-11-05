@@ -1,5 +1,5 @@
 const KEY = 'proteine.v1';
-const { SOURCES, BY_ID, DAYS, MEALS, DEFAULT_PLAN, DEFAULT_ADJ, dateKey, fromKey, addDays, dayIndex, mondayOf, currentMeal, nextSlot, slotId, targetOf, weekKeys, weekCounts, lastEaten, rank, history, weekStats, averages, parsePlan } = L;
+const { SOURCES, BY_ID, DAYS, MEALS, DEFAULT_PLAN, DEFAULT_ADJ, dateKey, fromKey, addDays, dayIndex, mondayOf, currentMeal, nextSlot, slotId, targetOf, weekKeys, weekCounts, lastEaten, rank, weekStats, averages } = L;
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -20,20 +20,22 @@ const ICONS = {
 };
 const icon = id => `<svg class="ic" viewBox="0 0 48 48" fill="currentColor" aria-hidden="true">${ICONS[id]}</svg>`;
 
+const now = () => (window.__NOW ? new Date(window.__NOW) : new Date());
+
 function load() {
   let s = null;
   try { s = JSON.parse(localStorage.getItem(KEY)); } catch (e) { /* si riparte dai valori iniziali */ }
   return s && s.plan ? { logs: {}, adj: {}, ...s } : { plan: DEFAULT_PLAN, adj: { ...DEFAULT_ADJ }, logs: {} };
 }
 let state = load();
-let tab = 'home', msg = null, toastTimer = null, picker = null;
+let tab = 'home', toastTimer = null, picker = null, chooser = null;
+let calMonth = new Date(now().getFullYear(), now().getMonth(), 1, 12);
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); }
   catch (e) { showToast('Salvataggio non riuscito: la memoria del browser è bloccata.'); }
 }
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
-const now = () => (window.__NOW ? new Date(window.__NOW) : new Date());
 const fmtDay = k => { const d = fromKey(k); return `${DAYS[dayIndex(d)].toLowerCase()}`; };
 function slotName(date, meal, today) {
   const m = MEALS[meal].toLowerCase();
@@ -59,50 +61,43 @@ function pips(r, future) {
 function futureCount(id, today) {
   return Object.entries(state.logs).filter(([k, v]) => v === id && k.split('|')[0] > today && weekKeys(mondayOf(fromKey(today))).includes(k.split('|')[0])).length;
 }
-function lastText(r, today) {
-  if (!r.last) return 'mai segnato';
-  const d = (fromKey(today) - fromKey(r.last)) / 864e5;
-  return d === 0 ? 'ultima volta oggi' : d === 1 ? 'ultima volta ieri' : d < 7 ? `ultima volta ${fmtDay(r.last)}` : `ultima volta ${Math.round(d)} giorni fa`;
-}
-
 function tile(r, i, today, cls = '') {
-  const port = state.plan.portions[r.id];
   return `<button class="tile g-${r.src.group} ${cls}" id="t-${r.id}" type="button" data-src="${r.id}">
     ${i != null ? `<span class="rk">${i + 1}</span>` : ''}${icon(r.id)}
-    <span class="nm">${r.src.name}</span>${r.target ? pips(r, futureCount(r.id, today)) : (r.done ? `<span class="pips">${r.done} fuori piano</span>` : '')}
-  </button>`;
-}
-function hero(r, today, rk) {
-  const port = state.plan.portions[r.id];
-  const bits = [`${r.rem === 1 ? 'Ne manca 1' : `Ne mancano ${r.rem}`} su ${r.target}`, lastText(r, today)];
-  return `<button class="tile first g-${r.src.group}" id="t-${r.id}" type="button" data-src="${r.id}">
-    <span class="rk">1</span>${icon(r.id)}
-    <span class="txt"><span class="nm">${r.src.name}${port ? ` ${port}` : ''}</span><span class="why">${bits.join(', ')}</span>${pips(r, futureCount(r.id, today))}</span>
+    <span class="nm">${r.src.name}</span>${pips(r, futureCount(r.id, today))}
   </button>`;
 }
 
 function renderHome() {
-  const n = now(), R = rank(state, n), d = fromKey(R.today);
-  const chip = m => {
-    const id = state.logs[slotId(R.today, m)];
-    return `<div class="${m === R.meal ? 'now' : ''}"><small>${MEALS[m]}${m === R.meal ? ', adesso' : ''}</small><b class="${id ? '' : 'none'}">${id ? BY_ID[id].name : 'Da segnare'}</b></div>`;
-  };
-  const left = R.slotsLeft === 0 ? 'Settimana completa'
-    : `${R.slotsLeft === 1 ? 'Resta 1 pasto' : `Restano ${R.slotsLeft} pasti`} e ${R.remTotal === 1 ? '1 porzione' : `${R.remTotal} porzioni`} del piano`;
-  let h = `<header class="head"><h1>${DAYS[dayIndex(d)]} ${d.getDate()} ${MONTHS[d.getMonth()]}</h1><p>${left}</p></header>
-    <section class="today">${chip('P')}${chip('C')}</section>`;
-  if (R.todo.length) {
-    h += `<section class="grid" aria-label="Da mangiare, dalla scelta migliore">${hero(R.todo[0], R.today)}${R.todo.slice(1).map((r, i) => tile(r, i + 1, R.today)).join('')}</section>`;
-  } else {
-    h += `<p class="sec">Tutte le porzioni del piano sono coperte.</p>`;
-  }
+  const R = rank(state, now());
+  let h = R.todo.length
+    ? `<section class="grid" aria-label="Da mangiare, dalla scelta migliore">${R.todo.map((r, i) => tile(r, i, R.today)).join('')}</section>`
+    : `<p class="sec">Tutte le porzioni del piano sono coperte.</p>`;
   if (R.covered.length) h += `<h2 class="sec">Già coperti questa settimana</h2><section class="grid done">${R.covered.map(r => tile(r, null, R.today, 'low')).join('')}</section>`;
-  if (R.off.length) h += `<h2 class="sec">Fuori piano</h2><section class="grid">${R.off.map(r => tile(r, null, R.today, 'low')).join('')}</section>`;
   return h;
 }
 
+function renderCalendar(today) {
+  const first = calMonth, y = first.getFullYear(), mo = first.getMonth();
+  const days = new Date(y, mo + 1, 0).getDate();
+  const meal = currentMeal(now(), state.plan);
+  let cells = ['L', 'M', 'M', 'G', 'V', 'S', 'D'].map(d => `<span class="h">${d}</span>`).join('');
+  cells += '<span></span>'.repeat(dayIndex(first));
+  for (let n = 1; n <= days; n++) {
+    const k = dateKey(new Date(y, mo, n, 12));
+    const slot = m => {
+      const id = state.logs[slotId(k, m)], src = id && BY_ID[id];
+      const fut = k > today || (k === today && m === 'C' && meal === 'P');
+      return `<button type="button" id="s-${k}-${m}" class="slot ${fut ? 'fut' : ''} ${src ? `full g-${src.group}` : 'empty'}" data-slot="${k}|${m}" aria-label="${cap(MEALS[m].toLowerCase())} del ${n}: ${src ? src.name : 'vuoto'}">${src ? icon(id) : ''}</button>`;
+    };
+    cells += `<div class="cal-d ${k === today ? 't' : ''}"><span class="n">${n}</span>${slot('P')}${slot('C')}</div>`;
+  }
+  return `<div class="wk-nav"><button id="cal-prev" type="button" aria-label="Mese precedente">‹</button><b>${cap(MONTHS[mo])} ${y}</b><button id="cal-next" type="button" aria-label="Mese successivo">›</button></div>
+    <div class="cal">${cells}</div><p class="sub">Sopra il pranzo, sotto la cena. Tocca una casella per aggiungere o cambiare il pasto.</p>`;
+}
+
 function renderPlan() {
-  const n = now(), today = dateKey(n), hist = history(state, n, 8), cur = hist[hist.length - 1];
+  const n = now(), today = dateKey(n), cur = weekStats(state, mondayOf(n), today);
   const av = averages(state, n);
   const sources = SOURCES.filter(s => targetOf(state, s.id) > 0 || cur.past[s.id] || cur.future[s.id]);
   const weekRows = sources.map(s => {
@@ -114,37 +109,25 @@ function renderPlan() {
       <div class="bar">${p ? `<i style="width:${p / base * 100}%"></i>` : ''}${f ? `<i class="f" style="width:${f / base * 100}%"></i>` : ''}</div></div>
       <span class="val">${p + f} di ${t}</span></div>`;
   }).join('');
-  const bars = hist.map(w => {
-    const m = fromKey(w.monday);
-    const last = w === cur;
-    return `<div title="Settimana del ${m.getDate()} ${MON3[m.getMonth()]}: ${w.pct}%, ${w.meals} pasti segnati">${last ? `<b>${w.pct}%</b>` : ''}<i style="height:${Math.max(w.pct, 1) * .8}%"></i><span>${m.getDate()}/${m.getMonth() + 1}</span></div>`;
-  }).join('');
   const total = SOURCES.reduce((a, s) => a + targetOf(state, s.id), 0);
-  const steps = SOURCES.filter(s => targetOf(state, s.id) > 0 || state.plan.targets[s.id] || ['pgrasso', 'affettati', 'ffresco'].includes(s.id)).map(s => {
-    const pl = state.plan.targets[s.id] || 0, t = targetOf(state, s.id);
+  const steps = SOURCES.map(s => {
+    const t = targetOf(state, s.id), port = state.plan.portions[s.id];
     return `<div class="row g-${s.group}"><span class="i">${icon(s.id)}</span>
-      <div class="n">${s.name}<small>${pl ? `Piano: ${pl}${state.plan.portions[s.id] ? `, ${state.plan.portions[s.id]}` : ''}` : 'Non nel piano'}</small></div>
+      <div class="n">${s.name}${port ? `<small>${port}</small>` : ''}</div>
       <div class="step"><button type="button" id="m-${s.id}" data-adj="${s.id}" data-d="-1" aria-label="Togli una porzione di ${s.name}">−</button><b>${t}</b><button type="button" id="p-${s.id}" data-adj="${s.id}" data-d="1" aria-label="Aggiungi una porzione di ${s.name}">+</button></div></div>`;
   }).join('');
-  const sum = hist.reduce((a, w) => a + w.meals, 0);
-  return `<header class="head"><h1>Piano e statistiche</h1></header>
-  <section class="card"><h2>Questa settimana</h2>
+  const dark = isDark();
+  return `<section class="card"><h2>Questa settimana</h2>
     <div><div class="kpi">${cur.pct}%</div><p class="sub">del piano mangiato finora (${cur.hit} porzioni su ${cur.tot}). Pasti segnati: ${cur.meals} su 14.</p></div>
     ${weekRows}
   </section>
-  <section class="card"><h2>Ultime 8 settimane</h2>
-    ${sum ? `<div class="bars">${bars}</div><p class="sub">Percentuale di porzioni del piano mangiate per settimana. Sotto: lunedì della settimana. Tocca o passa su una colonna per il dettaglio.</p>` : `<p class="sub">Segna il primo pasto dalla schermata Mangia e qui compare l'andamento.</p>`}
-  </section>
-  <section class="card"><h2>La mia dieta</h2>
-    <p class="sub">${esc(state.plan.label)}. Orari: pranzo ${state.plan.times.P}, cena ${state.plan.times.C}.</p>
-    ${msg ? `<p class="msg ${msg.err ? 'err' : ''}">${esc(msg.text)}</p>` : ''}
-    <button class="btn" id="load-pdf" type="button">Carica il PDF della dieta</button>
-    <p class="sub">Il PDF viene letto sul telefono e non esce da qui. Al caricamento le porzioni del piano si aggiornano, le tue modifiche qui sotto restano.</p>
-  </section>
+  <section class="card"><h2>Calendario</h2>${renderCalendar(today)}</section>
   <section class="card"><h2>Porzioni a settimana</h2>
-    <p class="sub">Totale ${total} su 14 pasti. Modificale per registrare le sostituzioni: l'ordine delle icone le segue.</p>
+    <p class="sub">Totale ${total} su 14 pasti.</p>
     ${steps}
-    <button class="btn alt" id="reset-adj" type="button">Usa le porzioni del PDF</button>
+  </section>
+  <section class="card"><h2>Sfondo</h2>
+    <div class="seg"><button class="btn alt" id="theme-light" type="button" data-theme-set="light" aria-pressed="${!dark}">Chiaro</button><button class="btn alt" id="theme-dark" type="button" data-theme-set="dark" aria-pressed="${dark}">Scuro</button></div>
   </section>
   <section class="card"><h2>Copia di sicurezza</h2>
     <p class="sub">I dati stanno solo su questo telefono. Scaricali ogni tanto: servono anche per ripristinarli se cambi telefono.</p>
@@ -152,10 +135,20 @@ function renderPlan() {
   </section>`;
 }
 
+function isDark() {
+  return state.theme ? state.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+}
+function applyTheme() {
+  if (state.theme) document.documentElement.dataset.theme = state.theme;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  document.querySelectorAll('meta[name=theme-color]').forEach(m => { m.content = bg; });
+}
+
 function render() {
   $('#view').innerHTML = tab === 'home' ? renderHome() : renderPlan();
   document.querySelectorAll('.tabs button').forEach(b => b.dataset.tab === tab ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
   if (picker) renderPicker();
+  if (chooser) renderChooser();
 }
 
 function cellHtml(k, m, today, cur) {
@@ -187,14 +180,25 @@ function renderPicker() {
     <p class="hint">Un riquadro già pieno viene sostituito. Tocca un riquadro con ${src.name.toLowerCase()} per toglierlo.</p>
   </div>`;
 }
-function openPicker(id) {
-  picker = { id, monday: mondayOf(now()) };
+function renderChooser() {
+  const { date, meal } = chooser, today = dateKey(now()), d = fromKey(date);
+  const curId = state.logs[slotId(date, meal)];
+  const R = rank(state, now());
+  const order = [...R.todo, ...R.covered, ...R.off];
+  $('#sheet').innerHTML = `<div class="sheet-in">
+    <div class="sh-head"><h2>${MEALS[meal]} di ${DAYS[dayIndex(d)].toLowerCase()} ${d.getDate()}</h2><button class="close" id="close" type="button" aria-label="Chiudi">×</button></div>
+    <div class="grid choose">${order.map(r => `<button class="tile pick g-${r.src.group} ${r.id === curId ? 'sel' : ''}" id="ch-${r.id}" type="button" data-pick="${r.id}">${icon(r.id)}<span class="nm">${r.src.name}</span></button>`).join('')}</div>
+    ${curId ? `<button class="btn alt" id="clear-slot" type="button">Togli ${BY_ID[curId].name.toLowerCase()}</button>` : ''}
+  </div>`;
+}
+function showSheet() {
   $('#toast').hidden = true;
-  renderPicker();
   $('#sheet').hidden = false; $('#sheet').scrollTop = 0;
   document.body.style.overflow = 'hidden';
 }
-function closePicker() { picker = null; $('#sheet').hidden = true; document.body.style.overflow = ''; }
+function openPicker(id) { picker = { id, monday: mondayOf(now()) }; renderPicker(); showSheet(); }
+function openChooser(date, meal) { chooser = { date, meal }; renderChooser(); showSheet(); }
+function closePicker() { picker = null; chooser = null; $('#sheet').hidden = true; document.body.style.overflow = ''; }
 
 function showToast(text, undo) {
   const t = $('#toast');
@@ -203,8 +207,8 @@ function showToast(text, undo) {
   t.onclick = e => { if (e.target.id === 'undo') { undo(); t.hidden = true; } };
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 6000);
 }
-function mark(date, meal) {
-  const id = picker.id, key = slotId(date, meal), prev = state.logs[key], today = dateKey(now());
+function mark(id, date, meal) {
+  const key = slotId(date, meal), prev = state.logs[key], today = dateKey(now());
   const where = slotName(date, meal, today);
   let text;
   if (prev === id) { delete state.logs[key]; text = `Tolto ${BY_ID[id].name.toLowerCase()} da ${where}`; }
@@ -213,34 +217,6 @@ function mark(date, meal) {
   showToast(text, () => { if (prev) state.logs[key] = prev; else delete state.logs[key]; save(); render(); });
 }
 
-async function readPdf(file) {
-  if (!window.pdfjsLib) await new Promise((ok, ko) => { const s = document.createElement('script'); s.src = 'vendor/pdf.min.js'; s.onload = ok; s.onerror = () => ko(new Error('Lettore PDF non disponibile: apri l\'app una volta con la connessione attiva.')); document.head.append(s); });
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
-  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
-  const lines = [];
-  for (let p = 1; p <= pdf.numPages; p++) {
-    const page = await pdf.getPage(p), tc = await page.getTextContent(), rows = new Map();
-    for (const it of tc.items) {
-      if (!it.str.trim()) continue;
-      const y = Math.round(it.transform[5] / 3);
-      if (!rows.has(y)) rows.set(y, []);
-      rows.get(y).push(it);
-    }
-    [...rows.keys()].sort((a, b) => b - a).forEach(y => lines.push(rows.get(y).sort((a, b) => a.transform[4] - b.transform[4]).map(i => i.str).join(' ').replace(/\s+/g, ' ')));
-  }
-  return lines;
-}
-async function onPdf(file) {
-  msg = { text: 'Lettura del PDF in corso.' }; render();
-  try {
-    const { plan, found, unknown } = parsePlan(await readPdf(file));
-    state.plan = plan; save();
-    let t = `Caricato: ${found} pasti, ${Object.values(plan.targets).reduce((a, b) => a + b, 0)} con una fonte proteica.`;
-    if (unknown.length) t += ` Senza fonte riconosciuta: ${unknown.join(', ')}.`;
-    msg = { text: t };
-  } catch (e) { msg = { text: e.message || 'Il PDF non si apre. Controlla che non sia protetto da password.', err: true }; }
-  render();
-}
 async function exportData() {
   const name = `proteine-${dateKey(now())}.json`;
   const file = new File([JSON.stringify(state, null, 1)], name, { type: 'application/json' });
@@ -254,14 +230,17 @@ async function importData(file) {
     if (!d.plan || !d.logs) throw 0;
     const before = state; state = { logs: {}, adj: {}, ...d }; save(); render();
     showToast(`Ripristinati ${Object.keys(d.logs).length} pasti`, () => { state = before; save(); render(); });
-  } catch (e) { msg = { text: 'Il file non è una copia di Proteine: scegli il file proteine-….json.', err: true }; render(); }
+  } catch (e) { showToast('Il file non è una copia di Proteine: scegli il file proteine-….json.'); }
 }
 
 document.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.dataset.tab) { tab = b.dataset.tab; msg = null; render(); window.scrollTo(0, 0); return; }
+  if (b.dataset.tab) { tab = b.dataset.tab; render(); window.scrollTo(0, 0); return; }
   if (b.dataset.src) return openPicker(b.dataset.src);
-  if (b.dataset.date) return mark(b.dataset.date, b.dataset.meal);
+  if (b.dataset.date) return mark(picker.id, b.dataset.date, b.dataset.meal);
+  if (b.dataset.slot) { const [d, m] = b.dataset.slot.split('|'); return openChooser(d, m); }
+  if (b.dataset.pick) return mark(b.dataset.pick, chooser.date, chooser.meal);
+  if (b.dataset.themeSet) { state.theme = b.dataset.themeSet; save(); applyTheme(); return render(); }
   if (b.dataset.adj) {
     const id = b.dataset.adj, d = +b.dataset.d;
     if (targetOf(state, id) + d < 0) return;
@@ -273,15 +252,16 @@ document.addEventListener('click', e => {
     case 'close': return closePicker();
     case 'wk-prev': picker.monday = addDays(picker.monday, -7); return renderPicker();
     case 'wk-next': picker.monday = addDays(picker.monday, 7); return renderPicker();
-    case 'load-pdf': return $('#pdf-input').click();
+    case 'cal-prev': calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1, 12); return render();
+    case 'cal-next': calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1, 12); return render();
+    case 'clear-slot': return mark(state.logs[slotId(chooser.date, chooser.meal)], chooser.date, chooser.meal);
     case 'import': return $('#json-input').click();
     case 'export': return exportData();
-    case 'reset-adj': { const before = state.adj; state.adj = {}; save(); render(); return showToast('Porzioni riportate a quelle del PDF', () => { state.adj = before; save(); render(); }); }
   }
 });
-$('#pdf-input').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) onPdf(f); });
 $('#json-input').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importData(f); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
-setInterval(() => { if (!document.hidden && !picker) render(); }, 60000);
+setInterval(() => { if (!document.hidden && !picker && !chooser) render(); }, 60000);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+applyTheme();
 render();

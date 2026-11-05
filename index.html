@@ -14,17 +14,17 @@
 <meta name="apple-mobile-web-app-title" content="Proteine">
 <meta name="theme-color" content="#f4f6f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#101619" media="(prefers-color-scheme: dark)">
+<script>try { var t = JSON.parse(localStorage.getItem('proteine.v1')).theme; if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main id="view"></main>
 <nav class="tabs" aria-label="Schermate">
-  <button id="tab-home" type="button" data-tab="home">Mangia</button>
-  <button id="tab-plan" type="button" data-tab="plan">Piano e statistiche</button>
+  <button id="tab-home" type="button" data-tab="home" aria-label="Mangia"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3v18M4 3v5a3 3 0 0 0 6 0V3M17 21v-7M17 14c-2 0-3-2-3-5s1.500-6 3-6z"/></svg></button>
+  <button id="tab-plan" type="button" data-tab="plan" aria-label="Statistiche"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="12" width="5" height="9" rx="1.500"/><rect x="9.500" y="3" width="5" height="18" rx="1.500"/><rect x="16" y="8" width="5" height="13" rx="1.500"/></svg></button>
 </nav>
 <div id="sheet" class="sheet" hidden></div>
 <div id="toast" class="toast" role="status" hidden></div>
-<input id="pdf-input" type="file" accept="application/pdf,.pdf" hidden>
 <input id="json-input" type="file" accept="application/json,.json" hidden>
 <script src="logic.js"></script>
 <script src="app.js"></script>
